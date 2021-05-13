@@ -112,7 +112,7 @@ class MyGUI:
                         img = cv2.circle(img, tuple(p), 2, (0, 255, 255), -1)
                     self.idx2 = idx
                 else:
-                    for p in self.p1:
+                    for p in self.p2:
                         img = cv2.circle(img, tuple(p), 2, (0, 255, 255), -1)
                 self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(img))
             self.cv2.create_image(0, 0, anchor='nw', image=self.tkimg2)

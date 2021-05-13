@@ -122,7 +122,7 @@ def reconstruct(left: np.ndarray, right: np.ndarray, alpha: List[float], beta: L
 
     return x,y,z
 
-def BackProjection(x:List[float],y:List[float],z:List[float],alpha:float,beta:float,l:float):
+def BackProjection(x:List[float],y:List[float],z:List[float],alpha:float,beta:float,l:float,D:float):
     '''计算重构后的点在指定平面上的反投影
     
     args:
@@ -130,10 +130,28 @@ def BackProjection(x:List[float],y:List[float],z:List[float],alpha:float,beta:fl
         alpha:LAO/RAO(光源围绕y轴旋转,与Z轴夹角),为角度值(-90~90)
         beta:CRA/CAU(光源围绕X轴旋转,与Z轴夹角),为角度值(-90~90)
         l:光源与世界坐标系原点的距离
+        D:光源与投影平面的距离
     returns:
         u,v:反投影后在图像平面的坐标值
     '''
-
+    length = len(x)
+    # 由[xi,yi,zi].T = Rx(βi)·Ry(αi)·[x,y,z].T + Ti 计算[xi,yi,zi]
+    Rx_b = rotate_matrix(beta,'x')
+    Ry_a = rotate_matrix(alpha,'y')
+    T = np.matrix([0,0,l]).T
+    u = []
+    v = []
+    for i in range(length):
+        res = Rx_b*Ry_a*np.matrix([x[i],y[i],z[i]]).T+T
+        xi = res[0,0]
+        yi = res[1,0]
+        zi = res[2,0]
+        # 由 ξi = ui/D = xi/zi,ηi = vi/D = yi/zi 计算ui,vi
+        ui = xi/zi*D
+        vi = yi/zi*D
+        u.append(ui)
+        v.append(vi)
+    return u,v
 
 if __name__ == '__main__':
     img1 = cv2.imread(sys.path[0]+'\\data\\d40.png',0)
@@ -149,4 +167,16 @@ if __name__ == '__main__':
     ax = plt.gca(projection='3d')
     ax.invert_zaxis()
     ax.scatter(x,y,z)
+    plt.show()
+
+
+    u1,v1 = BackProjection(x,y,z,40.1,-5.1,776,990)
+    u2,v2 = BackProjection(x,y,z,-3.8,31,840,989)
+    fig,ax = plt.subplots(1,2)
+    ax[0].imshow(img1,'gray')
+    ax[0].plot(left[:,0],left[:,1],c='r')
+    ax[0].plot(u1,v1,c='cyan')
+    ax[1].imshow(img2,'gray')
+    ax[1].plot(right[:,0],right[:,1],c='r')
+    ax[1].plot(u2,v2,c='cyan')
     plt.show()

@@ -120,11 +120,12 @@ def reconstruct(left: np.ndarray, right: np.ndarray, alpha: List[float], beta: L
         y.append(res[1, 0])
         z.append(res[2, 0])
 
-    return x,y,z
+    return x, y, z
 
-def BackProjection(x:List[float],y:List[float],z:List[float],alpha:float,beta:float,l:float,D:float):
+
+def BackProjection(x: List[float], y: List[float], z: List[float], alpha: float, beta: float, l: float, D: float):
     '''计算重构后的点在指定平面上的反投影
-    
+
     args:
         x,y,z:重构后的点在世界坐标系XYZO下的坐标
         alpha:LAO/RAO(光源围绕y轴旋转,与Z轴夹角),为角度值(-90~90)
@@ -136,26 +137,27 @@ def BackProjection(x:List[float],y:List[float],z:List[float],alpha:float,beta:fl
     '''
     length = len(x)
     # 由[xi,yi,zi].T = Rx(βi)·Ry(αi)·[x,y,z].T + Ti 计算[xi,yi,zi]
-    Rx_b = rotate_matrix(beta,'x')
-    Ry_a = rotate_matrix(alpha,'y')
-    T = np.matrix([0,0,l]).T
+    Rx_b = rotate_matrix(beta, 'x')
+    Ry_a = rotate_matrix(alpha, 'y')
+    T = np.matrix([0, 0, l]).T
     u = []
     v = []
     for i in range(length):
-        res = Rx_b*Ry_a*np.matrix([x[i],y[i],z[i]]).T+T
-        xi = res[0,0]
-        yi = res[1,0]
-        zi = res[2,0]
+        res = Rx_b*Ry_a*np.matrix([x[i], y[i], z[i]]).T+T
+        xi = res[0, 0]
+        yi = res[1, 0]
+        zi = res[2, 0]
         # 由 ξi = ui/D = xi/zi,ηi = vi/D = yi/zi 计算ui,vi
         ui = xi/zi*D
         vi = yi/zi*D
         u.append(ui)
         v.append(vi)
-    return u,v
+    return u, v
+
 
 if __name__ == '__main__':
-    img1 = cv2.imread(sys.path[0]+'\\data\\d40.png',0)
-    img2 = cv2.imread(sys.path[0]+'\\data\\d41.png',0)
+    img1 = cv2.imread(sys.path[0]+'\\data\\d40.png', 0)
+    img2 = cv2.imread(sys.path[0]+'\\data\\d41.png', 0)
     left = np.loadtxt(sys.path[0]+'\\data\\p1.txt')
     right = np.loadtxt(sys.path[0]+'\\data\\p2.txt')
     alpha = [40.1, -3.8]
@@ -163,20 +165,41 @@ if __name__ == '__main__':
     l = [776, 840]
     D = [990, 989]
 
-    x,y,z = reconstruct(left, right, alpha, beta, l, D)
+    x, y, z = reconstruct(left, right, alpha, beta, l, D)
     ax = plt.gca(projection='3d')
     ax.invert_zaxis()
-    ax.scatter(x,y,z)
-    plt.show()
+    ax.scatter(x, y, z)
 
+    u1, v1 = BackProjection(x, y, z, 40.1, -5.1, 776, 990)
+    u2, v2 = BackProjection(x, y, z, -3.8, 31, 840, 989)
+    fig, ax = plt.subplots(1, 2)
+    ax[0].imshow(img1, 'gray')
+    ax[0].plot(left[:, 0], left[:, 1], c='r')
+    ax[0].plot(u1, v1, c='cyan')
+    ax[1].imshow(img2, 'gray')
+    ax[1].plot(right[:, 0], right[:, 1], c='r')
+    ax[1].plot(u2, v2, c='cyan')
 
-    u1,v1 = BackProjection(x,y,z,40.1,-5.1,776,990)
-    u2,v2 = BackProjection(x,y,z,-3.8,31,840,989)
-    fig,ax = plt.subplots(1,2)
-    ax[0].imshow(img1,'gray')
-    ax[0].plot(left[:,0],left[:,1],c='r')
-    ax[0].plot(u1,v1,c='cyan')
-    ax[1].imshow(img2,'gray')
-    ax[1].plot(right[:,0],right[:,1],c='r')
-    ax[1].plot(u2,v2,c='cyan')
+    dist_err_1 = []
+    dist_err_2 = []
+    PixelSpacing = 0.2
+    for i in range(len(left)):
+        dist_err_1.append(
+            PixelSpacing*np.sqrt(pow(u1[i]-left[i, 0], 2)+pow(v1[i]-left[i, 1], 2)))
+        dist_err_2.append(
+            PixelSpacing*np.sqrt(pow(u2[i]-right[i, 0], 2)+pow(v2[i]-right[i, 1], 2)))
+
+    print("左图最大误差:{:.2f}mm".format(np.max(dist_err_1)))
+    print("左图最小误差:{:.2f}mm".format(np.min(dist_err_1)))
+    print("左图平均误差:{:.2f}mm".format(np.mean(dist_err_1)))
+    print("左图误差方差:{:.2f}mm".format(np.var(dist_err_1)))
+
+    print("右图最大误差:{:.2f}mm".format(np.max(dist_err_2)))
+    print("右图最小误差:{:.2f}mm".format(np.min(dist_err_2)))
+    print("右图平均误差:{:.2f}mm".format(np.mean(dist_err_2)))
+    print("右图误差方差:{:.2f}mm".format(np.var(dist_err_2)))
+    fig = plt.figure()
+    plt.plot(np.arange(len(left)), dist_err_1, c='r', label='left_err')
+    plt.plot(np.arange(len(left)), dist_err_2, c='cyan', label='right_err')
+    plt.legend(loc='best')
     plt.show()

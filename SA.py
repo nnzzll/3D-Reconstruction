@@ -132,14 +132,14 @@ def SimulatedAnnealing(p1, p2, alpha, beta, L, D, T=250, T0=10, random_seed=2021
     cnt = 0
     its = 0
     while(T > T0):
-        a1 = alpha[0] + torch.randn(1)
-        a2 = alpha[1] + torch.randn(1)
-        b1 = beta[0] + torch.randn(1)
-        b2 = beta[1] + torch.randn(1)
-        l1 = L[0] + 5*torch.randn(1)
-        l2 = L[1] + 5*torch.randn(1)
-        d1 = D[0] + 5*torch.randn(1)
-        d2 = D[1] + 5*torch.randn(1)
+        a1 = alpha[0]-5 + 10*torch.rand(1)
+        a2 = alpha[1]-5 + 10*torch.rand(1)
+        b1 = beta[0]-5 + 10*torch.rand(1)
+        b2 = beta[1]-5 + 10*torch.rand(1)
+        l1 = L[0]-50 + 100*torch.rand(1)
+        l2 = L[1]-50 + 100*torch.rand(1)
+        d1 = D[0]-50 + 100*torch.rand(1)
+        d2 = D[1]-50 + 100*torch.rand(1)
         new_xyz = Reconstruct(p1, p2, [a1, a2], [b1, b2], [l1, l2], [d1, d2])
         new_p1, new_p2 = BackProjection(
             new_xyz, [a1, a2], [b1, b2], [l1, l2], [d1, d2])
@@ -148,10 +148,10 @@ def SimulatedAnnealing(p1, p2, alpha, beta, L, D, T=250, T0=10, random_seed=2021
         epsilon = torch.rand(1)
         print(epsilon, p)
         if epsilon < p:
-            alpha = [a1, a2]
-            beta = [b1, b2]
-            L = [l1, l2]
-            D = [d1, d2]
+            new_alpha = [a1, a2]
+            new_beta = [b1, b2]
+            new_L = [l1, l2]
+            new_D = [d1, d2]
             cnt += 1
             E = E_new
         else:
@@ -161,7 +161,7 @@ def SimulatedAnnealing(p1, p2, alpha, beta, L, D, T=250, T0=10, random_seed=2021
     print("{}/{}".format(cnt, its))
     print("Init E:{}".format(init_E))
     print("New E:{}".format(E))
-    return alpha, beta, L, D
+    return new_alpha, new_beta, new_L, new_D
 
 
 if __name__ == '__main__':

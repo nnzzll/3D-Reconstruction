@@ -1,0 +1,5 @@
+*.npz
+*.pdf
+*.txt
+__pycache__
+.vscode

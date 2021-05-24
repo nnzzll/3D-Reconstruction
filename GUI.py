@@ -1,5 +1,6 @@
 import os
 import cv2
+from numpy.lib.type_check import imag
 import pydicom
 import numpy as np
 import tkinter as tk
@@ -8,6 +9,10 @@ from PIL import ImageTk, Image
 from scipy.interpolate import CubicSpline
 from tkinter import Frame, filedialog, ttk
 from tkinter.messagebox import *
+
+from medvision.curve import TangentVector, NormalVector, Spline
+from medvision.algorithm.postprocess import MaxRegion
+from medvision.algorithm.segmentation import SeedBinaryThreshold
 
 
 class MyGUI:
@@ -44,9 +49,18 @@ class MyGUI:
             self.frame3, text='读取DICOM2', relief='groove', command=self.read2)
         self.button3 = tk.Button(
             self.frame3, text="保存", relief='groove', command=self.save)
+        self.button4 = tk.Button(
+            self.frame3, text="加载", relief='groove', command=self.load)
+        self.button5 = tk.Button(
+            self.frame3, text="分割左图", relief='groove', command=self.seg_left)
+        self.button6 = tk.Button(
+            self.frame3, text="分割右图", relief='groove', command=self.seg_right)
         self.button1.grid(row=0, column=0, padx=10, pady=10, sticky=tk.E)
         self.button2.grid(row=0, column=1, padx=10, pady=10, sticky=tk.E)
         self.button3.grid(row=0, column=2, padx=10, pady=10, sticky=tk.E)
+        self.button4.grid(row=0, column=3, padx=10, pady=10, sticky=tk.E)
+        self.button5.grid(row=0, column=4, padx=10, pady=10, sticky=tk.E)
+        self.button6.grid(row=0, column=5, padx=10, pady=10, sticky=tk.E)
         self.frame_idx1 = tk.IntVar()
         self.frame_idx1.set(1)
         self.frame_idx2 = tk.IntVar()
@@ -66,6 +80,36 @@ class MyGUI:
             )
             showinfo("", "保存成功！")
 
+    def load(self):
+        if self.flag1 and self.flag2:
+            path = filedialog.askopenfilename()
+            if path:
+                if path.split('.')[-1] == 'npz':
+                    try:
+                        arr = np.load(path)
+                        p1 = arr['p1']
+                        p2 = arr['p2']
+                        self.p1 = p1.tolist()
+                        self.p2 = p2.tolist()
+                    except:
+                        showerror('', "文件错误！")
+                else:
+                    showinfo("提示", "无法读取的文件类型！")
+        else:
+            showinfo("提示", "请先读取数据！")
+
+    def seg_left(self):
+        idx = self.frame_idx1.get()-1
+        sub = subWindow(
+            self.root, self.dicom1.pixel_array[idx], np.array(self.p1))
+        sub.root.mainloop()
+
+    def seg_right(self):
+        idx = self.frame_idx2.get()-1
+        sub = subWindow(
+            self.root, self.dicom2.pixel_array[idx], np.array(self.p2))
+        sub.root.mainloop()
+
     def frame_select(self, text):
         self.show_frame()
 
@@ -83,7 +127,7 @@ class MyGUI:
                     sp = CubicSpline(t_ori, np.array(self.p1))
                     t_new = np.arange(1, len(self.p1), 0.1)
                     new_p1 = sp(t_new)
-                    new_p1 = np.array(new_p1,dtype=int)
+                    new_p1 = np.array(new_p1, dtype=int)
                     for p in new_p1:
                         img = cv2.circle(img, tuple(p), 2, (255, 0, 0), -1)
                     self.idx1 = idx
@@ -107,7 +151,7 @@ class MyGUI:
                     sp = CubicSpline(t_ori, np.array(self.p2))
                     t_new = np.arange(1, len(self.p2), 0.1)
                     new_p2 = sp(t_new)
-                    new_p2 = np.array(new_p2,dtype=int)
+                    new_p2 = np.array(new_p2, dtype=int)
                     for p in new_p2:
                         img = cv2.circle(img, tuple(p), 2, (0, 255, 255), -1)
                     self.idx2 = idx
@@ -184,6 +228,99 @@ class MyGUI:
         else:
             self.spline = False
         self.show_frame()
+
+
+class subWindow:
+    def __init__(self, master, img, point) -> None:
+        self.root = tk.Toplevel(master)
+        self.img = img
+        self.point = point
+        self.click = True
+
+        self.frame1 = tk.Frame(self.root)
+        self.frame2 = tk.Frame(self.root)
+        self.frame1.pack()
+        self.frame2.pack(fill=tk.X, expand=tk.YES)
+        self.frame2.columnconfigure(0, weight=1)
+        self.cv1 = tk.Canvas(self.frame1, height=800, width=800)
+        self.cv2 = tk.Canvas(self.frame1, height=800, width=800)
+        self.cv1.grid(row=0, column=0)
+        self.cv2.grid(row=0, column=1)
+        self.tkimg1 = ImageTk.PhotoImage(image=Image.fromarray(img))
+        self.tkimg2 = ImageTk.PhotoImage(
+            image=Image.fromarray(np.zeros_like(img)))
+        self.cv1.create_image(0, 0, anchor='nw', image=self.tkimg1)
+        self.cv2.create_image(0, 0, anchor='nw', image=self.tkimg2)
+        self.cv1.update()
+        self.cv2.update()
+        self.cv1.bind("<Button-2>", self.on_middle)
+        self.button1 = tk.Button(
+            self.frame2, text='自动分割', relief='groove', command=self.segment)
+        self.button1.grid(row=0, column=0, padx=10, pady=10, sticky=tk.E)
+
+    def on_middle(self,event):
+        if self.click:
+            self.click = False
+            self.segment()
+        else:
+            self.click = True
+            self.segment()
+
+    def segment(self):
+        img = cv2.GaussianBlur(self.img, (3, 3), 0)
+        points = Spline(self.point)
+        output = SeedBinaryThreshold(img, points.astype(int), (20, 20))
+        # output = MaxRegion(output)
+        self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(output))
+        contour_1,contour_2 = GetContours(points.astype(int),output)
+        img = cv2.cvtColor(self.img,cv2.COLOR_GRAY2RGB)
+        for i in range(len(points)):
+            cv2.circle(img,(contour_1[i,0],contour_1[i,1]),1,(255,0,0),-1)
+            cv2.circle(img,(contour_2[i,0],contour_2[i,1]),1,(0,255,0),-1)
+        if self.click:
+            self.tkimg1 = ImageTk.PhotoImage(image=Image.fromarray(img))
+        else:
+            self.tkimg1 = ImageTk.PhotoImage(image=Image.fromarray(self.img))
+        self.cv1.create_image(0, 0, anchor='nw', image=self.tkimg1)
+        self.cv2.create_image(0, 0, anchor='nw', image=self.tkimg2)
+        self.cv1.update()
+        self.cv2.update()
+
+
+def GetContours(points: np.ndarray, binary: np.ndarray):
+    '''从血管中心线出发,找到曲线法向量与轮廓的交点
+
+    args:
+        points:中心线,(N,2)
+        binary:血管的二值图像,血管区域为1,背景为0
+    '''
+    contour_1 = np.zeros_like(points)
+    contour_2 = np.zeros_like(points)
+    # 三次样条拟合曲线,计算曲线切向量
+    vec = TangentVector(points)
+    # 计算两个方向上的法向量
+    vec_1, vec_2 = NormalVector(vec)
+    for i in range(len(points)):
+        t = 0
+        new_x = int(t*vec_1[i, 0]+points[i, 0])
+        new_y = int(t*vec_1[i, 1]+points[i, 1])
+        while(binary[new_y, new_x]):
+            t += 1
+            new_x = int(t*vec_1[i, 0]+points[i, 0])
+            new_y = int(t*vec_1[i, 1]+points[i, 1])
+        contour_1[i, 0] = new_x
+        contour_1[i, 1] = new_y
+
+        t = 0
+        new_x = int(t*vec_2[i, 0]+points[i, 0])
+        new_y = int(t*vec_2[i, 1]+points[i, 1])
+        while(binary[new_y, new_x]):
+            t += 1
+            new_x = int(t*vec_2[i, 0]+points[i, 0])
+            new_y = int(t*vec_2[i, 1]+points[i, 1])
+        contour_2[i, 0] = new_x
+        contour_2[i, 1] = new_y
+    return contour_1, contour_2
 
 
 gui = MyGUI()

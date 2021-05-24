@@ -1,7 +1,6 @@
 '''A python implementation of simulated annealing alogorithm'''
 import cv2
 import sys
-from numpy.core.numerictypes import maximum_sctype
 import torch
 import numpy as np
 import matplotlib.pyplot as plt

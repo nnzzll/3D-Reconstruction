@@ -11,9 +11,9 @@ from scipy.interpolate import CubicSpline
 from tkinter import Frame, filedialog, ttk
 from tkinter.messagebox import *
 
-from medvision.curve import TangentVector, NormalVector, Spline
+from medvision.curve import Spline
 from medvision.algorithm.postprocess import MaxRegion
-from medvision.algorithm.segmentation import SeedBinaryThreshold
+from medvision.algorithm.segmentation import SeedBinaryThreshold, GetContours
 
 
 class MyGUI:
@@ -45,23 +45,23 @@ class MyGUI:
         self.cv1.grid(row=0, column=0)
         self.cv2.grid(row=0, column=1)
         self.button1 = tk.Button(
-            self.frame3, text='读取DICOM1', relief='groove', command=self.read1)
+            self.frame3, text='读取DICOM1', relief='groove',width=10, command=self.read1)
         self.button2 = tk.Button(
-            self.frame3, text='读取DICOM2', relief='groove', command=self.read2)
+            self.frame3, text='读取DICOM2', relief='groove',width=10, command=self.read2)
         self.button3 = tk.Button(
-            self.frame3, text="保存", relief='groove', command=self.save)
+            self.frame3, text="保存", relief='groove',width=10, command=self.save)
         self.button4 = tk.Button(
-            self.frame3, text="加载", relief='groove', command=self.load)
+            self.frame3, text="加载", relief='groove',width=10, command=self.load)
         self.button5 = tk.Button(
-            self.frame3, text="分割左图", relief='groove', command=self.seg_left)
+            self.frame3, text="分割左图", relief='groove',width=10, command=self.seg_left)
         self.button6 = tk.Button(
-            self.frame3, text="分割右图", relief='groove', command=self.seg_right)
-        self.button1.grid(row=0, column=0, padx=10, pady=10, sticky=tk.E)
-        self.button2.grid(row=0, column=1, padx=10, pady=10, sticky=tk.E)
-        self.button3.grid(row=0, column=2, padx=10, pady=10, sticky=tk.E)
-        self.button4.grid(row=0, column=3, padx=10, pady=10, sticky=tk.E)
-        self.button5.grid(row=0, column=4, padx=10, pady=10, sticky=tk.E)
-        self.button6.grid(row=0, column=5, padx=10, pady=10, sticky=tk.E)
+            self.frame3, text="分割右图", relief='groove',width=10, command=self.seg_right)
+        self.button1.grid(row=0, column=0, padx=3, pady=10, sticky=tk.E)
+        self.button2.grid(row=0, column=1, padx=3, pady=10, sticky=tk.E)
+        self.button3.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
+        self.button4.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
+        self.button5.grid(row=0, column=4, padx=3, pady=10, sticky=tk.E)
+        self.button6.grid(row=0, column=5, padx=3, pady=10, sticky=tk.E)
         self.frame_idx1 = tk.IntVar()
         self.frame_idx1.set(1)
         self.frame_idx2 = tk.IntVar()
@@ -102,14 +102,16 @@ class MyGUI:
     def seg_left(self):
         idx = self.frame_idx1.get()-1
         sub = subWindow(
-            self.root, self.dicom1.pixel_array[idx], np.array(self.p1))
-        sub.root.mainloop()
+            self.root, self, self.dicom1.pixel_array[idx], np.array(self.p1))
+        # sub.root.mainloop()
+        self.root.wait_window(sub.root)
 
     def seg_right(self):
         idx = self.frame_idx2.get()-1
         sub = subWindow(
-            self.root, self.dicom2.pixel_array[idx], np.array(self.p2))
-        sub.root.mainloop()
+            self.root, self, self.dicom2.pixel_array[idx], np.array(self.p2))
+        # sub.root.mainloop()
+        self.root.wait_window(sub.root)
 
     def frame_select(self, text):
         self.show_frame()
@@ -232,8 +234,9 @@ class MyGUI:
 
 
 class subWindow:
-    def __init__(self, master, img, point) -> None:
+    def __init__(self, master, parent, img, point) -> None:
         self.root = tk.Toplevel(master)
+        self.parent = parent
         self.img = img
         self.point = point
         self.click = True
@@ -276,6 +279,7 @@ class subWindow:
         # output = MaxRegion(output)
         self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(self.mask))
         self.c1, self.c2 = GetContours(self.point.astype(int), self.mask)
+        self.parent.c1 = self.c1
         self.show()
 
     def show(self):
@@ -324,42 +328,6 @@ class subWindow:
             self.c2[self.idx-len(self.point)-1, 0] = event.x
             self.c2[self.idx-len(self.point)-1, 1] = event.y
         self.show()
-
-
-def GetContours(points: np.ndarray, binary: np.ndarray):
-    '''从血管中心线出发,找到曲线法向量与轮廓的交点
-
-    args:
-        points:中心线,(N,2)
-        binary:血管的二值图像,血管区域为1,背景为0
-    '''
-    contour_1 = np.zeros_like(points)
-    contour_2 = np.zeros_like(points)
-    # 三次样条拟合曲线,计算曲线切向量
-    vec = TangentVector(points)
-    # 计算两个方向上的法向量
-    vec_1, vec_2 = NormalVector(vec)
-    for i in range(len(points)):
-        t = 0
-        new_x = int(t*vec_1[i, 0]+points[i, 0])
-        new_y = int(t*vec_1[i, 1]+points[i, 1])
-        while(binary[new_y, new_x]):
-            t += 1
-            new_x = int(t*vec_1[i, 0]+points[i, 0])
-            new_y = int(t*vec_1[i, 1]+points[i, 1])
-        contour_1[i, 0] = new_x
-        contour_1[i, 1] = new_y
-
-        t = 0
-        new_x = int(t*vec_2[i, 0]+points[i, 0])
-        new_y = int(t*vec_2[i, 1]+points[i, 1])
-        while(binary[new_y, new_x]):
-            t += 1
-            new_x = int(t*vec_2[i, 0]+points[i, 0])
-            new_y = int(t*vec_2[i, 1]+points[i, 1])
-        contour_2[i, 0] = new_x
-        contour_2[i, 1] = new_y
-    return contour_1, contour_2
 
 
 gui = MyGUI()

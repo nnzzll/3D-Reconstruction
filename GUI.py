@@ -3,6 +3,7 @@ import cv2
 import pydicom
 import numpy as np
 import tkinter as tk
+import matplotlib.pyplot as plt
 
 from scissors.feature_extraction import Scissors
 from PIL import ImageTk, Image
@@ -236,6 +237,8 @@ class subWindow:
         self.img = img
         self.point = point
         self.click = True
+        self.oval = np.zeros_like(img)
+        self.mask = np.zeros_like(img)
 
         self.frame1 = tk.Frame(self.root)
         self.frame2 = tk.Frame(self.root)
@@ -261,20 +264,23 @@ class subWindow:
     def on_middle(self, event):
         if self.click:
             self.click = False
-            self.segment()
+            self.show()
         else:
             self.click = True
-            self.segment()
+            self.show()
 
     def segment(self):
         img = cv2.GaussianBlur(self.img, (3, 3), 0)
         points = Spline(self.point)
-        output = SeedBinaryThreshold(img, points.astype(int), (24, 24))
+        self.mask = SeedBinaryThreshold(img, points.astype(int), (24, 24))
         # output = MaxRegion(output)
-        self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(output))
-        c1, c2 = GetContours(self.point.astype(int), output)
-        contour_1 = Spline(c1,dtype=int)
-        contour_2 = Spline(c2,dtype=int)
+        self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(self.mask))
+        self.c1, self.c2 = GetContours(self.point.astype(int), self.mask)
+        self.show()
+
+    def show(self):
+        contour_1 = Spline(self.c1, dtype=int)
+        contour_2 = Spline(self.c2, dtype=int)
         img = cv2.cvtColor(self.img, cv2.COLOR_GRAY2RGB)
         for i in range(len(contour_1)):
             cv2.circle(
@@ -287,11 +293,37 @@ class subWindow:
             self.tkimg1 = ImageTk.PhotoImage(image=Image.fromarray(self.img))
         self.cv1.create_image(0, 0, anchor='nw', image=self.tkimg1)
         if self.click:
+            self.oval = np.zeros_like(self.img)
+            c1 = self.c1.astype(int)
+            c2 = self.c2.astype(int)
             for i in range(len(c1)):
-                self.cv1.create_oval(int(c1[i,0]-3),int(c1[i,1]-3),int(c1[i,0]+3),int(c1[i,1]+3),fill='white')
+                x = max(min(c1[i, 0], self.img.shape[1]-3), 3)
+                y = max(min(c1[i, 1], self.img.shape[0]-3), 3)
+                self.cv1.create_oval(x-3, y-3, x+3, y+3, fill='white')
+                self.oval[y-3:y+3, x-3:x+3] = i+1
+            for i in range(len(c2)):
+                x = max(min(c2[i, 0], self.img.shape[1]-3), 3)
+                y = max(min(c2[i, 1], self.img.shape[0]-3), 3)
+                self.cv1.create_oval(x-3, y-3, x+3, y+3, fill='white')
+                self.oval[y-3:y+3, x-3:x+3] = i+1+len(c1)
         self.cv2.create_image(0, 0, anchor='nw', image=self.tkimg2)
+        self.cv1.bind("<ButtonPress-1>", self.on_press)
         self.cv1.update()
         self.cv2.update()
+
+    def on_press(self, event):
+        if self.oval[event.y, event.x]:
+            self.idx = self.oval[event.y, event.x]
+            self.cv1.bind("<B1-Motion>", self.on_move)
+
+    def on_move(self, event):
+        if self.idx <= len(self.point):
+            self.c1[self.idx-1, 0] = event.x
+            self.c1[self.idx-1, 1] = event.y
+        else:
+            self.c2[self.idx-len(self.point)-1, 0] = event.x
+            self.c2[self.idx-len(self.point)-1, 1] = event.y
+        self.show()
 
 
 def GetContours(points: np.ndarray, binary: np.ndarray):

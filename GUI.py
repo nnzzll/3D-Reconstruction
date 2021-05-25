@@ -1,19 +1,18 @@
 import os
 import cv2
+import torch
 import pydicom
 import numpy as np
 import tkinter as tk
-import matplotlib.pyplot as plt
 
-from scissors.feature_extraction import Scissors
 from PIL import ImageTk, Image
-from scipy.interpolate import CubicSpline
 from tkinter import Frame, filedialog, ttk
 from tkinter.messagebox import *
 
-from medvision.curve import Spline
-from medvision.algorithm.postprocess import MaxRegion
 from medvision.algorithm.segmentation import SeedBinaryThreshold, GetContours
+from medvision.math3d.curve import Spline
+from medvision.math3d.visualize import PointCloudVTK
+from medvision.math3d.reconstruction import Reconstruct, BackProjection, SimulatedAnnealing
 
 
 class MyGUI:
@@ -22,6 +21,8 @@ class MyGUI:
         self.dicom2 = None
         self.alpha = [0, 0]
         self.beta = [0, 0]
+        self.l = [0, 0]
+        self.D = [0, 0]
         self.p1 = []
         self.p2 = []
         self.tkimg1 = None
@@ -45,23 +46,27 @@ class MyGUI:
         self.cv1.grid(row=0, column=0)
         self.cv2.grid(row=0, column=1)
         self.button1 = tk.Button(
-            self.frame3, text='读取DICOM1', relief='groove',width=10, command=self.read1)
+            self.frame3, text='读取DICOM1', relief='groove', width=10, command=self.read1)
         self.button2 = tk.Button(
-            self.frame3, text='读取DICOM2', relief='groove',width=10, command=self.read2)
+            self.frame3, text='读取DICOM2', relief='groove', width=10, command=self.read2)
         self.button3 = tk.Button(
-            self.frame3, text="保存", relief='groove',width=10, command=self.save)
+            self.frame3, text="保存", relief='groove', width=10, command=self.save)
         self.button4 = tk.Button(
-            self.frame3, text="加载", relief='groove',width=10, command=self.load)
+            self.frame3, text="加载", relief='groove', width=10, command=self.load)
         self.button5 = tk.Button(
-            self.frame3, text="分割左图", relief='groove',width=10, command=self.seg_left)
+            self.frame3, text="分割左图", relief='groove', width=10, command=self.seg_left)
         self.button6 = tk.Button(
-            self.frame3, text="分割右图", relief='groove',width=10, command=self.seg_right)
-        self.button1.grid(row=0, column=0, padx=3, pady=10, sticky=tk.E)
-        self.button2.grid(row=0, column=1, padx=3, pady=10, sticky=tk.E)
-        self.button3.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
-        self.button4.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
-        self.button5.grid(row=0, column=4, padx=3, pady=10, sticky=tk.E)
-        self.button6.grid(row=0, column=5, padx=3, pady=10, sticky=tk.E)
+            self.frame3, text="分割右图", relief='groove', width=10, command=self.seg_right)
+        self.button7 = tk.Button(
+            self.frame3, text="生成龙骨", relief='groove', width=10, command=self.centerline)
+        self.button1.grid(row=0, column=1, padx=3, pady=10, sticky=tk.E)
+        self.button2.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
+        self.button3.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
+        self.button4.grid(row=0, column=4, padx=3, pady=10, sticky=tk.E)
+        self.button5.grid(row=0, column=5, padx=3, pady=10, sticky=tk.E)
+        self.button6.grid(row=0, column=6, padx=3, pady=10, sticky=tk.E)
+        self.button7.grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
+
         self.frame_idx1 = tk.IntVar()
         self.frame_idx1.set(1)
         self.frame_idx2 = tk.IntVar()
@@ -99,6 +104,16 @@ class MyGUI:
         else:
             showinfo("提示", "请先读取数据！")
 
+    def centerline(self):
+        p1 = torch.Tensor(Spline(np.array(self.p1)))
+        p2 = torch.Tensor(Spline(np.array(self.p2)))
+        with torch.no_grad():
+            new_alpha, new_beta, new_l, new_D = SimulatedAnnealing(
+                p1, p2, self.alpha.copy(), self.beta.copy(), self.l.copy(), self.D.copy())
+            xyz = Reconstruct(p1, p2, new_alpha, new_beta, new_l, new_D)
+        output = xyz.detach().numpy()
+        PointCloudVTK(output)
+
     def seg_left(self):
         idx = self.frame_idx1.get()-1
         sub = subWindow(
@@ -126,11 +141,7 @@ class MyGUI:
                 img = np.expand_dims(
                     self.dicom1.pixel_array[idx], axis=2).repeat(3, axis=2)
                 if self.spline and len(self.p1) >= 2:
-                    t_ori = np.arange(1, len(self.p1)+1)
-                    sp = CubicSpline(t_ori, np.array(self.p1))
-                    t_new = np.arange(1, len(self.p1), 0.1)
-                    new_p1 = sp(t_new)
-                    new_p1 = np.array(new_p1, dtype=int)
+                    new_p1 = Spline(self.p1, dtype=int)
                     for p in new_p1:
                         img = cv2.circle(img, tuple(p), 2, (255, 0, 0), -1)
                     self.idx1 = idx
@@ -150,11 +161,7 @@ class MyGUI:
                 img = np.expand_dims(
                     self.dicom2.pixel_array[idx], axis=2).repeat(3, axis=2)
                 if self.spline and len(self.p2) >= 2:
-                    t_ori = np.arange(1, len(self.p2)+1)
-                    sp = CubicSpline(t_ori, np.array(self.p2))
-                    t_new = np.arange(1, len(self.p2), 0.1)
-                    new_p2 = sp(t_new)
-                    new_p2 = np.array(new_p2, dtype=int)
+                    new_p2 = Spline(self.p2, dtype=int)
                     for p in new_p2:
                         img = cv2.circle(img, tuple(p), 2, (0, 255, 255), -1)
                     self.idx2 = idx
@@ -172,6 +179,8 @@ class MyGUI:
             self.flag1 = True
             self.alpha[0] = float(self.dicom1[0x0018, 0x1510].value)
             self.beta[0] = float(self.dicom1[0x0018, 0x1511].value)
+            self.l[0] = float(self.dicom1[0x0018, 0x1110].value)
+            self.D[0] = float(self.dicom1[0x0018, 0x1111].value)
             self.Scale1 = tk.Scale(
                 self.frame2, length=800, orient=tk.HORIZONTAL, from_=1, to=len(self.dicom1.pixel_array), resolution=1,
                 show=0, variable=self.frame_idx1, command=self.frame_select)
@@ -191,6 +200,8 @@ class MyGUI:
             self.flag2 = True
             self.alpha[1] = float(self.dicom2[0x0018, 0x1510].value)
             self.beta[1] = float(self.dicom2[0x0018, 0x1511].value)
+            self.l[1] = float(self.dicom2[0x0018, 0x1110].value)
+            self.D[1] = float(self.dicom2[0x0018, 0x1111].value)
             self.Scale2 = tk.Scale(
                 self.frame2, length=800, orient=tk.HORIZONTAL, from_=1, to=len(self.dicom1.pixel_array),
                 resolution=1, show=0, variable=self.frame_idx2, command=self.frame_select)
@@ -276,7 +287,6 @@ class subWindow:
         img = cv2.GaussianBlur(self.img, (3, 3), 0)
         points = Spline(self.point)
         self.mask = SeedBinaryThreshold(img, points.astype(int), (24, 24))
-        # output = MaxRegion(output)
         self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(self.mask))
         self.c1, self.c2 = GetContours(self.point.astype(int), self.mask)
         self.parent.c1 = self.c1

@@ -19,6 +19,7 @@ class MyGUI:
     def __init__(self):
         self.dicom1 = None
         self.dicom2 = None
+        self.PixelSpacing = [0,0]
         self.alpha = [0, 0]
         self.beta = [0, 0]
         self.l = [0, 0]
@@ -86,6 +87,7 @@ class MyGUI:
             if self.c1_flag and self.c2_flag:
                 np.savez(
                     path, p1=p1, p2=p2, alpha=alpha, beta=beta, l=l, D=D,
+                    PixelSpacing=self.PixelSpacing,
                     img1=self.dicom1.pixel_array[self.idx1],
                     img2=self.dicom2.pixel_array[self.idx2],
                     l1=self.l1, l2=self.l2, r1=self.r1, r2=self.r2
@@ -93,6 +95,7 @@ class MyGUI:
             else:
                 np.savez(
                     path, p1=p1, p2=p2, alpha=alpha, beta=beta, l=l, D=D,
+                    PixelSpacing=self.PixelSpacing,
                     img1=self.dicom1.pixel_array[self.idx1],
                     img2=self.dicom2.pixel_array[self.idx2]
                 )
@@ -191,10 +194,12 @@ class MyGUI:
         if(path):
             self.dicom1 = pydicom.read_file(path)
             self.flag1 = True
+            self.PixelSpacing[0] = float(self.dicom1[0x0018,0x1164].value[0])
+            self.PixelSpacing[1] = float(self.dicom1[0x0018,0x1164].value[1])
             self.alpha[0] = float(self.dicom1[0x0018, 0x1510].value)
             self.beta[0] = float(self.dicom1[0x0018, 0x1511].value)
-            self.l[0] = float(self.dicom1[0x0018, 0x1110].value)
-            self.D[0] = float(self.dicom1[0x0018, 0x1111].value)
+            self.l[0] = float(self.dicom1[0x0018, 0x1110].value)/self.PixelSpacing[0]
+            self.D[0] = float(self.dicom1[0x0018, 0x1111].value)/self.PixelSpacing[0]
             self.Scale1 = tk.Scale(
                 self.frame2, length=800, orient=tk.HORIZONTAL, from_=1, to=len(self.dicom1.pixel_array), resolution=1,
                 show=0, variable=self.frame_idx1, command=self.frame_select)
@@ -214,8 +219,8 @@ class MyGUI:
             self.flag2 = True
             self.alpha[1] = float(self.dicom2[0x0018, 0x1510].value)
             self.beta[1] = float(self.dicom2[0x0018, 0x1511].value)
-            self.l[1] = float(self.dicom2[0x0018, 0x1110].value)
-            self.D[1] = float(self.dicom2[0x0018, 0x1111].value)
+            self.l[1] = float(self.dicom2[0x0018, 0x1110].value)/self.PixelSpacing[0]
+            self.D[1] = float(self.dicom2[0x0018, 0x1111].value)/self.PixelSpacing[0]
             self.Scale2 = tk.Scale(
                 self.frame2, length=800, orient=tk.HORIZONTAL, from_=1, to=len(self.dicom1.pixel_array),
                 resolution=1, show=0, variable=self.frame_idx2, command=self.frame_select)

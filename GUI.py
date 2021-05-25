@@ -1,10 +1,10 @@
 import os
 import cv2
-from numpy.lib.type_check import imag
 import pydicom
 import numpy as np
 import tkinter as tk
 
+from scissors.feature_extraction import Scissors
 from PIL import ImageTk, Image
 from scipy.interpolate import CubicSpline
 from tkinter import Frame, filedialog, ttk
@@ -258,7 +258,7 @@ class subWindow:
             self.frame2, text='自动分割', relief='groove', command=self.segment)
         self.button1.grid(row=0, column=0, padx=10, pady=10, sticky=tk.E)
 
-    def on_middle(self,event):
+    def on_middle(self, event):
         if self.click:
             self.click = False
             self.segment()
@@ -269,19 +269,26 @@ class subWindow:
     def segment(self):
         img = cv2.GaussianBlur(self.img, (3, 3), 0)
         points = Spline(self.point)
-        output = SeedBinaryThreshold(img, points.astype(int), (20, 20))
+        output = SeedBinaryThreshold(img, points.astype(int), (24, 24))
         # output = MaxRegion(output)
         self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(output))
-        contour_1,contour_2 = GetContours(points.astype(int),output)
-        img = cv2.cvtColor(self.img,cv2.COLOR_GRAY2RGB)
-        for i in range(len(points)):
-            cv2.circle(img,(contour_1[i,0],contour_1[i,1]),1,(255,0,0),-1)
-            cv2.circle(img,(contour_2[i,0],contour_2[i,1]),1,(0,255,0),-1)
+        c1, c2 = GetContours(self.point.astype(int), output)
+        contour_1 = Spline(c1,dtype=int)
+        contour_2 = Spline(c2,dtype=int)
+        img = cv2.cvtColor(self.img, cv2.COLOR_GRAY2RGB)
+        for i in range(len(contour_1)):
+            cv2.circle(
+                img, (contour_1[i, 0], contour_1[i, 1]), 1, (255, 0, 0), -1)
+            cv2.circle(
+                img, (contour_2[i, 0], contour_2[i, 1]), 1, (0, 255, 0), -1)
         if self.click:
             self.tkimg1 = ImageTk.PhotoImage(image=Image.fromarray(img))
         else:
             self.tkimg1 = ImageTk.PhotoImage(image=Image.fromarray(self.img))
         self.cv1.create_image(0, 0, anchor='nw', image=self.tkimg1)
+        if self.click:
+            for i in range(len(c1)):
+                self.cv1.create_oval(int(c1[i,0]-3),int(c1[i,1]-3),int(c1[i,0]+3),int(c1[i,1]+3),fill='white')
         self.cv2.create_image(0, 0, anchor='nw', image=self.tkimg2)
         self.cv1.update()
         self.cv2.update()

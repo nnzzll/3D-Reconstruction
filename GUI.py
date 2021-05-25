@@ -30,6 +30,8 @@ class MyGUI:
         self.flag1 = False
         self.flag2 = False
         self.spline = False
+        self.c1_flag = False
+        self.c2_flag = False
         self.idx1 = 0
         self.idx2 = 0
 
@@ -79,11 +81,21 @@ class MyGUI:
             p2 = np.array(self.p2)
             alpha = np.array(self.alpha)
             beta = np.array(self.beta)
-            np.savez(
-                path, p1=p1, p2=p2, alpha=alpha, beta=beta,
-                img1=self.dicom1.pixel_array[self.idx1],
-                img2=self.dicom2.pixel_array[self.idx2]
-            )
+            l = np.array(self.l)
+            D = np.array(self.D)
+            if self.c1_flag and self.c2_flag:
+                np.savez(
+                    path, p1=p1, p2=p2, alpha=alpha, beta=beta, l=l, D=D,
+                    img1=self.dicom1.pixel_array[self.idx1],
+                    img2=self.dicom2.pixel_array[self.idx2],
+                    l1=self.l1, l2=self.l2, r1=self.r1, r2=self.r2
+                )
+            else:
+                np.savez(
+                    path, p1=p1, p2=p2, alpha=alpha, beta=beta, l=l, D=D,
+                    img1=self.dicom1.pixel_array[self.idx1],
+                    img2=self.dicom2.pixel_array[self.idx2]
+                )
             showinfo("", "保存成功！")
 
     def load(self):
@@ -120,13 +132,15 @@ class MyGUI:
             self.root, self, self.dicom1.pixel_array[idx], np.array(self.p1))
         # sub.root.mainloop()
         self.root.wait_window(sub.root)
+        self.c1_flag = True
 
     def seg_right(self):
         idx = self.frame_idx2.get()-1
         sub = subWindow(
-            self.root, self, self.dicom2.pixel_array[idx], np.array(self.p2))
+            self.root, self, self.dicom2.pixel_array[idx], np.array(self.p2), False)
         # sub.root.mainloop()
         self.root.wait_window(sub.root)
+        self.c2_flag = True
 
     def frame_select(self, text):
         self.show_frame()
@@ -245,12 +259,13 @@ class MyGUI:
 
 
 class subWindow:
-    def __init__(self, master, parent, img, point) -> None:
+    def __init__(self, master, parent, img, point, left: bool = True) -> None:
         self.root = tk.Toplevel(master)
         self.parent = parent
         self.img = img
         self.point = point
         self.click = True
+        self.left = left
         self.oval = np.zeros_like(img)
         self.mask = np.zeros_like(img)
 
@@ -289,7 +304,12 @@ class subWindow:
         self.mask = SeedBinaryThreshold(img, points.astype(int), (24, 24))
         self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(self.mask))
         self.c1, self.c2 = GetContours(self.point.astype(int), self.mask)
-        self.parent.c1 = self.c1
+        if self.left:
+            self.parent.l1 = self.c1
+            self.parent.l2 = self.c2
+        else:
+            self.parent.r1 = self.c1
+            self.parent.r2 = self.c2
         self.show()
 
     def show(self):
@@ -337,6 +357,12 @@ class subWindow:
         else:
             self.c2[self.idx-len(self.point)-1, 0] = event.x
             self.c2[self.idx-len(self.point)-1, 1] = event.y
+        if self.left:
+            self.parent.l1 = self.c1
+            self.parent.l2 = self.c2
+        else:
+            self.parent.r1 = self.c1
+            self.parent.r2 = self.c2
         self.show()
 
 

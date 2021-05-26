@@ -10,7 +10,7 @@ from tkinter import Frame, filedialog, ttk
 from tkinter.messagebox import *
 
 from medvision.algorithm.segmentation import SeedBinaryThreshold, GetContours
-from medvision.math3d.curve import Spline
+from medvision.math3d.curve import Ellipse, Spline, TangentVector
 from medvision.math3d.visualize import PointCloudVTK
 from medvision.math3d.reconstruction import Reconstruct, BackProjection, SimulatedAnnealing
 
@@ -19,7 +19,7 @@ class MyGUI:
     def __init__(self):
         self.dicom1 = None
         self.dicom2 = None
-        self.PixelSpacing = [0,0]
+        self.PixelSpacing = [0, 0]
         self.alpha = [0, 0]
         self.beta = [0, 0]
         self.l = [0, 0]
@@ -62,13 +62,16 @@ class MyGUI:
             self.frame3, text="分割右图", relief='groove', width=10, command=self.seg_right)
         self.button7 = tk.Button(
             self.frame3, text="生成龙骨", relief='groove', width=10, command=self.centerline)
-        self.button1.grid(row=0, column=1, padx=3, pady=10, sticky=tk.E)
-        self.button2.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
-        self.button3.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
-        self.button4.grid(row=0, column=4, padx=3, pady=10, sticky=tk.E)
-        self.button5.grid(row=0, column=5, padx=3, pady=10, sticky=tk.E)
-        self.button6.grid(row=0, column=6, padx=3, pady=10, sticky=tk.E)
+        self.button8 = tk.Button(
+            self.frame3, text="生成点云", relief='groove', width=10, command=self.pointcloud)
+        self.button1.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
+        self.button2.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
+        self.button3.grid(row=0, column=4, padx=3, pady=10, sticky=tk.E)
+        self.button4.grid(row=0, column=5, padx=3, pady=10, sticky=tk.E)
+        self.button5.grid(row=0, column=6, padx=3, pady=10, sticky=tk.E)
+        self.button6.grid(row=0, column=7, padx=3, pady=10, sticky=tk.E)
         self.button7.grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
+        self.button8.grid(row=0, column=1, padx=10, pady=10, sticky=tk.W)
 
         self.frame_idx1 = tk.IntVar()
         self.frame_idx1.set(1)
@@ -127,7 +130,49 @@ class MyGUI:
                 p1, p2, self.alpha.copy(), self.beta.copy(), self.l.copy(), self.D.copy())
             xyz = Reconstruct(p1, p2, new_alpha, new_beta, new_l, new_D)
         output = xyz.detach().numpy()
+        self.skeleton = output
+        self.new_alpha = new_alpha[0]
+        self.new_beta = new_beta[0]
+        self.new_l = new_l[0]
+        self.new_D = new_D[0]
         PointCloudVTK(output)
+
+    def pointcloud(self):
+        try:
+            vec = TangentVector(self.skeleton)
+            s = np.zeros([3])
+            s[0] = np.cos(self.new_alpha*np.pi/180)
+            s[1] = np.sin(self.new_alpha*np.pi/180) * \
+                np.sin(self.new_beta*np.pi/180)
+            s[2] = np.sin(self.new_alpha*np.pi/180) * \
+                np.cos(self.new_beta*np.pi/180)
+            s1 = np.expand_dims(s, axis=0).repeat(len(self.skeleton), axis=0)
+        except:
+            showinfo("提示", "请先生成龙骨！")
+            return
+        try:
+            l1 = Spline(self.l1)
+            l2 = Spline(self.l2)
+            r1 = Spline(self.r1)
+            r2 = Spline(self.r2)
+            a = np.linalg.norm(l1-l2, axis=1)
+            b = np.linalg.norm(r1-r2, axis=1)
+        except:
+            showinfo("提示", "请先分割轮廓")
+            return
+        u = np.cross(vec, s1)
+        v = np.cross(vec, u)
+        u_norm = np.linalg.norm(u, axis=1)
+        v_norm = np.linalg.norm(v, axis=1)
+        u = u / np.expand_dims(u_norm, axis=1).repeat(3, axis=1)
+        v = v / np.expand_dims(v_norm, axis=1).repeat(3, axis=1)
+        vessel = np.zeros([len(self.skeleton), 30, 3])
+        for i in range(len(self.skeleton)):
+            for j in range(30):
+                vessel[i, j, :] = Ellipse(
+                    self.skeleton[i], a[i], b[i], j*12, u[i], v[i])
+        temp = vessel.reshape(-1, 3)
+        PointCloudVTK(temp)
 
     def seg_left(self):
         idx = self.frame_idx1.get()-1
@@ -194,12 +239,14 @@ class MyGUI:
         if(path):
             self.dicom1 = pydicom.read_file(path)
             self.flag1 = True
-            self.PixelSpacing[0] = float(self.dicom1[0x0018,0x1164].value[0])
-            self.PixelSpacing[1] = float(self.dicom1[0x0018,0x1164].value[1])
+            self.PixelSpacing[0] = float(self.dicom1[0x0018, 0x1164].value[0])
+            self.PixelSpacing[1] = float(self.dicom1[0x0018, 0x1164].value[1])
             self.alpha[0] = float(self.dicom1[0x0018, 0x1510].value)
             self.beta[0] = float(self.dicom1[0x0018, 0x1511].value)
-            self.l[0] = float(self.dicom1[0x0018, 0x1110].value)/self.PixelSpacing[0]
-            self.D[0] = float(self.dicom1[0x0018, 0x1111].value)/self.PixelSpacing[0]
+            self.l[0] = float(
+                self.dicom1[0x0018, 0x1110].value)/self.PixelSpacing[0]
+            self.D[0] = float(
+                self.dicom1[0x0018, 0x1111].value)/self.PixelSpacing[0]
             self.Scale1 = tk.Scale(
                 self.frame2, length=800, orient=tk.HORIZONTAL, from_=1, to=len(self.dicom1.pixel_array), resolution=1,
                 show=0, variable=self.frame_idx1, command=self.frame_select)
@@ -219,8 +266,10 @@ class MyGUI:
             self.flag2 = True
             self.alpha[1] = float(self.dicom2[0x0018, 0x1510].value)
             self.beta[1] = float(self.dicom2[0x0018, 0x1511].value)
-            self.l[1] = float(self.dicom2[0x0018, 0x1110].value)/self.PixelSpacing[0]
-            self.D[1] = float(self.dicom2[0x0018, 0x1111].value)/self.PixelSpacing[0]
+            self.l[1] = float(
+                self.dicom2[0x0018, 0x1110].value)/self.PixelSpacing[0]
+            self.D[1] = float(
+                self.dicom2[0x0018, 0x1111].value)/self.PixelSpacing[0]
             self.Scale2 = tk.Scale(
                 self.frame2, length=800, orient=tk.HORIZONTAL, from_=1, to=len(self.dicom1.pixel_array),
                 resolution=1, show=0, variable=self.frame_idx2, command=self.frame_select)

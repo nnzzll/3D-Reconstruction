@@ -132,8 +132,8 @@ class MyGUI:
             showinfo("提示", "请先读取数据！")
 
     def centerline(self):
-        p1 = torch.Tensor(Spline(np.array(self.p1)))
-        p2 = torch.Tensor(Spline(np.array(self.p2)))
+        p1 = torch.Tensor(Spline(np.array(self.p1))-self.dicom1.pixel_array[0].shape[0]/2)
+        p2 = torch.Tensor(Spline(np.array(self.p2))-self.dicom1.pixel_array[0].shape[0]/2)
         with torch.no_grad():
             new_alpha, new_beta, new_l, new_D = SimulatedAnnealing(
                 p1, p2, self.alpha.copy(), self.beta.copy(), self.l.copy(), self.D.copy())

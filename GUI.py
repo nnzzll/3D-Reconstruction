@@ -1,4 +1,3 @@
-import os
 import cv2
 import torch
 import pydicom
@@ -6,7 +5,7 @@ import numpy as np
 import tkinter as tk
 
 from PIL import ImageTk, Image
-from tkinter import Frame, filedialog, ttk
+from tkinter import filedialog, ttk
 from tkinter.messagebox import *
 
 from medvision.algorithm.segmentation import SeedBinaryThreshold, GetContours

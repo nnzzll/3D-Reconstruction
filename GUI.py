@@ -12,7 +12,7 @@ from tkinter.messagebox import *
 from medvision.algorithm.segmentation import SeedBinaryThreshold, GetContours
 from medvision.math3d.curve import Ellipse, Spline, TangentVector
 from medvision.math3d.visualize import PointCloudVTK
-from medvision.math3d.reconstruction import Reconstruct, BackProjection, SimulatedAnnealing
+from medvision.math3d.reconstruction import Reconstruct, SimulatedAnnealing
 
 
 class MyGUI:
@@ -48,35 +48,44 @@ class MyGUI:
         self.cv2 = tk.Canvas(self.frame1, height=800, width=800)
         self.cv1.grid(row=0, column=0)
         self.cv2.grid(row=0, column=1)
+        self.menubar = tk.Menu(self.root)
+        self.filemenu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label='文件', menu=self.filemenu)
+        self.filemenu.add_command(label='读取DICOM1', command=self.read1)
+        self.filemenu.add_command(label='读取DICOM2', command=self.read2)
+        self.filemenu.add_command(label='保存', command=self.save)
+        self.filemenu.add_command(label='导入', command=self.load)
+        self.filemenu.add_separator()
+        self.filemenu.add_command(label='退出', command=self.root.quit)
+        self.root.config(menu=self.menubar)
         self.button1 = tk.Button(
-            self.frame3, text='读取DICOM1', relief='groove', width=10, command=self.read1)
-        self.button2 = tk.Button(
-            self.frame3, text='读取DICOM2', relief='groove', width=10, command=self.read2)
-        self.button3 = tk.Button(
-            self.frame3, text="保存", relief='groove', width=10, command=self.save)
-        self.button4 = tk.Button(
-            self.frame3, text="加载", relief='groove', width=10, command=self.load)
-        self.button5 = tk.Button(
             self.frame3, text="分割左图", relief='groove', width=10, command=self.seg_left)
-        self.button6 = tk.Button(
+        self.button2 = tk.Button(
             self.frame3, text="分割右图", relief='groove', width=10, command=self.seg_right)
-        self.button7 = tk.Button(
+        self.button3 = tk.Button(
             self.frame3, text="生成龙骨", relief='groove', width=10, command=self.centerline)
-        self.button8 = tk.Button(
+        self.button4 = tk.Button(
             self.frame3, text="生成点云", relief='groove', width=10, command=self.pointcloud)
-        self.button1.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
-        self.button2.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
-        self.button3.grid(row=0, column=4, padx=3, pady=10, sticky=tk.E)
-        self.button4.grid(row=0, column=5, padx=3, pady=10, sticky=tk.E)
-        self.button5.grid(row=0, column=6, padx=3, pady=10, sticky=tk.E)
-        self.button6.grid(row=0, column=7, padx=3, pady=10, sticky=tk.E)
-        self.button7.grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
-        self.button8.grid(row=0, column=1, padx=10, pady=10, sticky=tk.W)
-
+        self.button1.grid(row=0, column=0, padx=3, pady=10, sticky=tk.E)
+        self.button2.grid(row=0, column=1, padx=3, pady=10, sticky=tk.E)
+        self.button3.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
+        self.button4.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
+        self.root.bind("<Button-1>", self.focus)
+        self.root.bind("<Control-s>", self.key)
+        self.root.bind("<Control-i>", self.key)
         self.frame_idx1 = tk.IntVar()
         self.frame_idx1.set(1)
         self.frame_idx2 = tk.IntVar()
         self.frame_idx2.set(1)
+
+    def focus(self,event):
+        self.root.focus_set()
+    
+    def key(self,event):
+        if(event.keycode==83):
+            self.save()
+        elif(event.keycode==73):
+            self.load()
 
     def save(self):
         path = filedialog.asksaveasfilename(defaultextension='.npz')
@@ -342,7 +351,10 @@ class subWindow:
         self.cv1.bind("<Button-2>", self.on_middle)
         self.button1 = tk.Button(
             self.frame2, text='自动分割', relief='groove', command=self.segment)
-        self.button1.grid(row=0, column=0, padx=10, pady=10, sticky=tk.E)
+        self.button2 = tk.Button(
+            self.frame2, text='完成', relief='groove', command=self.root.destroy)
+        self.button1.grid(row=0, column=0, padx=5, pady=10, sticky=tk.E)
+        self.button2.grid(row=0, column=1, padx=10, pady=10, sticky=tk.E)
 
     def on_middle(self, event):
         if self.click:
@@ -353,18 +365,21 @@ class subWindow:
             self.show()
 
     def segment(self):
-        img = cv2.GaussianBlur(self.img, (3, 3), 0)
-        points = Spline(self.point)
-        self.mask = SeedBinaryThreshold(img, points.astype(int), (24, 24))
-        self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(self.mask))
-        self.c1, self.c2 = GetContours(self.point.astype(int), self.mask)
-        if self.left:
-            self.parent.l1 = self.c1
-            self.parent.l2 = self.c2
-        else:
-            self.parent.r1 = self.c1
-            self.parent.r2 = self.c2
-        self.show()
+        try:
+            img = cv2.GaussianBlur(self.img, (3, 3), 0)
+            points = Spline(self.point)
+            self.mask = SeedBinaryThreshold(img, points.astype(int), (24, 24))
+            self.tkimg2 = ImageTk.PhotoImage(image=Image.fromarray(self.mask))
+            self.c1, self.c2 = GetContours(self.point.astype(int), self.mask)
+            if self.left:
+                self.parent.l1 = self.c1
+                self.parent.l2 = self.c2
+            else:
+                self.parent.r1 = self.c1
+                self.parent.r2 = self.c2
+            self.show()
+        except:
+            showinfo("提示","请先标记血管中心线！")
 
     def show(self):
         contour_1 = Spline(self.c1, dtype=int)

@@ -77,13 +77,13 @@ class MyGUI:
         self.frame_idx2 = tk.IntVar()
         self.frame_idx2.set(1)
 
-    def focus(self,event):
+    def focus(self, event):
         self.root.focus_set()
-    
-    def key(self,event):
-        if(event.keycode==83):
+
+    def key(self, event):
+        if(event.keycode == 83):
             self.save()
-        elif(event.keycode==73):
+        elif(event.keycode == 73):
             self.load()
 
     def save(self):
@@ -123,6 +123,11 @@ class MyGUI:
                         p2 = arr['p2']
                         self.p1 = p1.tolist()
                         self.p2 = p2.tolist()
+                        try:
+                            self.l1, self.l2 = arr['l1'], arr['l2']
+                            self.r1, self.r2 = arr['r1'], arr['r2']
+                        except:
+                            pass
                     except:
                         showerror('', "文件错误！")
                 else:
@@ -131,8 +136,10 @@ class MyGUI:
             showinfo("提示", "请先读取数据！")
 
     def centerline(self):
-        p1 = torch.Tensor(Spline(np.array(self.p1))-self.dicom1.pixel_array[0].shape[0]/2)
-        p2 = torch.Tensor(Spline(np.array(self.p2))-self.dicom1.pixel_array[0].shape[0]/2)
+        p1 = torch.Tensor(Spline(np.array(self.p1)) -
+                          self.dicom1.pixel_array[0].shape[0]/2)
+        p2 = torch.Tensor(Spline(np.array(self.p2)) -
+                          self.dicom1.pixel_array[0].shape[0]/2)
         with torch.no_grad():
             new_alpha, new_beta, new_l, new_D = SimulatedAnnealing(
                 p1, p2, self.alpha.copy(), self.beta.copy(), self.l.copy(), self.D.copy())
@@ -378,7 +385,7 @@ class subWindow:
                 self.parent.r2 = self.c2
             self.show()
         except:
-            showinfo("提示","请先标记血管中心线！")
+            showinfo("提示", "请先标记血管中心线！")
 
     def show(self):
         contour_1 = Spline(self.c1, dtype=int)
@@ -434,5 +441,6 @@ class subWindow:
         self.show()
 
 
-gui = MyGUI()
-gui.root.mainloop()
+if __name__ == '__main__':
+    gui = MyGUI()
+    gui.root.mainloop()

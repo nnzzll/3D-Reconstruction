@@ -7,10 +7,10 @@ import tkinter as tk
 from PIL import ImageTk, Image
 from tkinter import filedialog, ttk
 from tkinter.messagebox import *
-
+from scipy.interpolate import CubicSpline
 from medvision.algorithm.segmentation import SeedBinaryThreshold, GetContours
 from medvision.math3d.curve import Ellipse, Spline, TangentVector
-from medvision.math3d.visualize import PointCloudVTK
+from medvision.math3d.visualize import PointCloudVTK, VTKSurfaceFitting
 from medvision.math3d.reconstruction import Reconstruct, SimulatedAnnealing
 
 
@@ -65,10 +65,13 @@ class MyGUI:
             self.frame3, text="生成龙骨", relief='groove', width=10, command=self.centerline)
         self.button4 = tk.Button(
             self.frame3, text="生成点云", relief='groove', width=10, command=self.pointcloud)
+        self.button5 = tk.Button(
+            self.frame3, text="曲面拟合", relief='groove', width=10, command=self.surf)
         self.button1.grid(row=0, column=0, padx=3, pady=10, sticky=tk.E)
         self.button2.grid(row=0, column=1, padx=3, pady=10, sticky=tk.E)
         self.button3.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
         self.button4.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
+        self.button5.grid(row=0, column=4, padx=3, pady=10, sticky=tk.E)
         self.root.bind("<Button-1>", self.focus)
         self.root.bind("<Control-s>", self.key)
         self.root.bind("<Control-i>", self.key)
@@ -181,29 +184,63 @@ class MyGUI:
         v_norm = np.linalg.norm(v, axis=1)
         u = u / np.expand_dims(u_norm, axis=1).repeat(3, axis=1)
         v = v / np.expand_dims(v_norm, axis=1).repeat(3, axis=1)
-        vessel = np.zeros([len(self.skeleton), 30, 3])
+        vessel = np.zeros([len(self.skeleton), 120, 3])
         for i in range(len(self.skeleton)):
-            for j in range(30):
+            for j in range(120):
                 vessel[i, j, :] = Ellipse(
-                    self.skeleton[i], a[i], b[i], j*12, u[i], v[i])
+                    self.skeleton[i], a[i], b[i], j*3, u[i], v[i])
+        self.vessel = vessel
         temp = vessel.reshape(-1, 3)
         PointCloudVTK(temp)
 
+    def surf(self):
+        def point_dist(points):
+            dist = np.zeros(len(points)-1, float)
+            for i in range(len(points)-1):
+                dist[i] = np.linalg.norm(points[i]-points[i+1])
+            return dist
+        try:
+            dist = np.zeros([120, len(self.skeleton)-1])
+            for i in range(120):
+                dist[i] = point_dist(self.vessel[:, i, :])
+        except:
+            showinfo("", "请先生成点云！")
+            return
+        dist_min = dist.min()
+        temp = None
+        for j in range(120):
+            t_new = []
+            t_ori = np.arange(len(self.skeleton))
+            sp = CubicSpline(t_ori, self.vessel[:, j, :])
+            for i in range(len(self.skeleton)-1):
+                if dist[j, i] >= dist_min:
+                    step = dist_min/dist[j, i]
+                    t_new.extend(np.arange(i, i+1, step=step).tolist())
+                else:
+                    t_new.append(i)
+            t_new.append(len(self.skeleton)-1)
+            new_points = sp(t_new)
+            temp = new_points if j == 0 else np.vstack([temp, new_points])
+        VTKSurfaceFitting(temp)
+
+
     def seg_left(self):
-        idx = self.frame_idx1.get()-1
-        sub = subWindow(
-            self.root, self, self.dicom1.pixel_array[idx], np.array(self.p1))
-        # sub.root.mainloop()
-        self.root.wait_window(sub.root)
-        self.c1_flag = True
+        if self.flag1 and self.p1:
+            idx = self.frame_idx1.get()-1
+            sub = subWindow(
+                self.root, self, self.dicom1.pixel_array[idx], np.array(self.p1))
+            # sub.root.mainloop()
+            self.root.wait_window(sub.root)
+            self.c1_flag = True
 
     def seg_right(self):
-        idx = self.frame_idx2.get()-1
-        sub = subWindow(
-            self.root, self, self.dicom2.pixel_array[idx], np.array(self.p2), False)
-        # sub.root.mainloop()
-        self.root.wait_window(sub.root)
-        self.c2_flag = True
+        if self.flag2 and self.p2:
+            idx = self.frame_idx2.get()-1
+            sub = subWindow(
+                self.root, self, self.dicom2.pixel_array[idx], np.array(self.p2), False)
+            # sub.root.mainloop()
+            self.root.wait_window(sub.root)
+            self.c2_flag = True
 
     def frame_select(self, text):
         self.show_frame()

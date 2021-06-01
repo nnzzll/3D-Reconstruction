@@ -8,10 +8,11 @@ from PIL import ImageTk, Image
 from tkinter import filedialog, ttk
 from tkinter.messagebox import *
 from scipy.interpolate import CubicSpline
-from medvision.algorithm.segmentation import SeedBinaryThreshold, GetContours
+from medvision.math3d.surf import meshgrid
 from medvision.math3d.curve import Ellipse, Spline, TangentVector
-from medvision.math3d.visualize import PointCloudVTK, VTKSurfaceFitting
+from medvision.math3d.visualize import VTKPointCloud, VTKMeshgrid
 from medvision.math3d.reconstruction import Reconstruct, SimulatedAnnealing
+from medvision.algorithm.segmentation import SeedBinaryThreshold, GetContours
 
 
 class MyGUI:
@@ -67,11 +68,14 @@ class MyGUI:
             self.frame3, text="生成点云", relief='groove', width=10, command=self.pointcloud)
         self.button5 = tk.Button(
             self.frame3, text="曲面拟合", relief='groove', width=10, command=self.surf)
+        self.button6 = tk.Button(
+            self.frame3, text="保存模型", relief='groove', width=10, command=self.meshgrid2ply)
         self.button1.grid(row=0, column=0, padx=3, pady=10, sticky=tk.E)
         self.button2.grid(row=0, column=1, padx=3, pady=10, sticky=tk.E)
         self.button3.grid(row=0, column=2, padx=3, pady=10, sticky=tk.E)
         self.button4.grid(row=0, column=3, padx=3, pady=10, sticky=tk.E)
         self.button5.grid(row=0, column=4, padx=3, pady=10, sticky=tk.E)
+        self.button6.grid(row=0, column=5, padx=3, pady=10, sticky=tk.E)
         self.root.bind("<Button-1>", self.focus)
         self.root.bind("<Control-s>", self.key)
         self.root.bind("<Control-i>", self.key)
@@ -148,12 +152,12 @@ class MyGUI:
                 p1, p2, self.alpha.copy(), self.beta.copy(), self.l.copy(), self.D.copy())
             xyz = Reconstruct(p1, p2, new_alpha, new_beta, new_l, new_D)
         output = xyz.detach().numpy()
-        self.skeleton = output
+        self.skeleton = output*self.PixelSpacing[0]
         self.new_alpha = new_alpha[0]
         self.new_beta = new_beta[0]
         self.new_l = new_l[0]
         self.new_D = new_D[0]
-        PointCloudVTK(output)
+        VTKPointCloud(output)
 
     def pointcloud(self):
         try:
@@ -173,8 +177,8 @@ class MyGUI:
             l2 = Spline(self.l2)
             r1 = Spline(self.r1)
             r2 = Spline(self.r2)
-            a = np.linalg.norm(l1-l2, axis=1)
-            b = np.linalg.norm(r1-r2, axis=1)
+            a = np.linalg.norm(l1-l2, axis=1)/2*self.PixelSpacing[0]
+            b = np.linalg.norm(r1-r2, axis=1)/2*self.PixelSpacing[0]
         except:
             showinfo("提示", "请先分割轮廓")
             return
@@ -184,45 +188,43 @@ class MyGUI:
         v_norm = np.linalg.norm(v, axis=1)
         u = u / np.expand_dims(u_norm, axis=1).repeat(3, axis=1)
         v = v / np.expand_dims(v_norm, axis=1).repeat(3, axis=1)
-        vessel = np.zeros([len(self.skeleton), 120, 3])
+        contour_num = 180
+        vessel = np.zeros([len(self.skeleton), contour_num, 3])
         for i in range(len(self.skeleton)):
-            for j in range(120):
+            for j in range(contour_num):
                 vessel[i, j, :] = Ellipse(
-                    self.skeleton[i], a[i], b[i], j*3, u[i], v[i])
+                    self.skeleton[i], a[i], b[i], j*(360//contour_num), u[i], v[i])
         self.vessel = vessel
-        temp = vessel.reshape(-1, 3)
-        PointCloudVTK(temp)
+        VTKPointCloud(vessel.reshape(-1, 3))
 
     def surf(self):
-        def point_dist(points):
-            dist = np.zeros(len(points)-1, float)
-            for i in range(len(points)-1):
-                dist[i] = np.linalg.norm(points[i]-points[i+1])
-            return dist
-        try:
-            dist = np.zeros([120, len(self.skeleton)-1])
-            for i in range(120):
-                dist[i] = point_dist(self.vessel[:, i, :])
-        except:
-            showinfo("", "请先生成点云！")
-            return
-        dist_min = dist.min()
-        temp = None
-        for j in range(120):
-            t_new = []
-            t_ori = np.arange(len(self.skeleton))
-            sp = CubicSpline(t_ori, self.vessel[:, j, :])
-            for i in range(len(self.skeleton)-1):
-                if dist[j, i] >= dist_min:
-                    step = dist_min/dist[j, i]
-                    t_new.extend(np.arange(i, i+1, step=step).tolist())
-                else:
-                    t_new.append(i)
-            t_new.append(len(self.skeleton)-1)
-            new_points = sp(t_new)
-            temp = new_points if j == 0 else np.vstack([temp, new_points])
-        VTKSurfaceFitting(temp)
+        self.vertices, self.normals, self.faces = meshgrid(self.vessel)
+        VTKMeshgrid(self.vertices, self.faces)
 
+    def meshgrid2ply(self):
+        filename = filedialog.asksaveasfilename(defaultextension='.ply')
+        if(filename):
+            try:
+                vertices = np.hstack([self.vertices, self.normals])
+                faces_done = np.hstack([np.tile(
+                    np.array([3]), [self.faces.shape[0], 1]), self.faces])  # 在面信息前加入‘3’表示三角网格标识
+                # 必须先写入，然后利用write()在开头插入ply header
+                np.savetxt(filename, vertices,
+                           fmt='%f %f %f %f %f %f')     # 先写入verts
+                fileObject = open(filename, "a+")
+                for j in range(0, len(faces_done)):
+                    fileObject.write(str(faces_done[j, ::])[1:-1] + '\n')
+                ply_header = 'ply\nformat ascii 1.0\ncomment VCGLIB generated\nelement vertex %(vert_num)d\n'+'property float x\nproperty float y\nproperty float z\nproperty float nx\nproperty float ny\nproperty float nz\n'+'element face '+str(
+                    len(self.faces))+'\n'+'property list uchar int vertex_indices\nend_header\n'
+                fileObject.close()
+                with open(filename, 'r+') as f:
+                    old = f.read()
+                    f.seek(0)
+                    f.write(ply_header % dict(vert_num=len(vertices)))
+                    f.write(old)
+                showinfo("", "保存成功！")
+            except:
+                showinfo("", "请先拟合曲面！")
 
     def seg_left(self):
         if self.flag1 and self.p1:

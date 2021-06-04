@@ -297,9 +297,9 @@ class MyGUI:
             self.PixelSpacing[1] = float(self.dicom1[0x0018, 0x1164].value[1])
             self.alpha[0] = float(self.dicom1[0x0018, 0x1510].value)
             self.beta[0] = float(self.dicom1[0x0018, 0x1511].value)
-            self.l[0] = float(
-                self.dicom1[0x0018, 0x1110].value)/self.PixelSpacing[0]
             self.D[0] = float(
+                self.dicom1[0x0018, 0x1110].value)/self.PixelSpacing[0]
+            self.l[0] = float(
                 self.dicom1[0x0018, 0x1111].value)/self.PixelSpacing[0]
             self.Scale1 = tk.Scale(
                 self.frame2, length=800, orient=tk.HORIZONTAL, from_=1, to=len(self.dicom1.pixel_array), resolution=1,
@@ -320,9 +320,9 @@ class MyGUI:
             self.flag2 = True
             self.alpha[1] = float(self.dicom2[0x0018, 0x1510].value)
             self.beta[1] = float(self.dicom2[0x0018, 0x1511].value)
-            self.l[1] = float(
-                self.dicom2[0x0018, 0x1110].value)/self.PixelSpacing[0]
             self.D[1] = float(
+                self.dicom2[0x0018, 0x1110].value)/self.PixelSpacing[0]
+            self.l[1] = float(
                 self.dicom2[0x0018, 0x1111].value)/self.PixelSpacing[0]
             self.Scale2 = tk.Scale(
                 self.frame2, length=800, orient=tk.HORIZONTAL, from_=1, to=len(self.dicom1.pixel_array),
